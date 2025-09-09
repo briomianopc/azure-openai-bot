@@ -17,4 +17,6 @@
 ```bash
 
 sudo docker compose build
-docker compose up -d
+sudo docker compose up -d
+
+PS:新版本docker compose已经内置在docker中，调用已经成为 docker compose(不是docker-compose),所以上述命令无误，请悉知。
