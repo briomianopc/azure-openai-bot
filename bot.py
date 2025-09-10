@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import asyncio
+import re
 from typing import Dict, Optional
 from datetime import datetime
 
@@ -38,6 +39,86 @@ class AzureOpenAIBot:
             'gpt-3.5-turbo-0125': {'max_tokens': 4000, 'temperature': 0.7},
             'grok-3': {'max_tokens': 4000, 'temperature': 0.8}
         }
+    
+    def preprocess_math_formulas(self, text: str) -> str:
+        """预处理数学公式，将LaTeX格式转换为Telegram支持的格式"""
+        # 处理行内数学公式 $...$
+        text = re.sub(r'\$([^$]+)\$', r'`\1`', text)
+        
+        # 处理块级数学公式 $$...$$
+        text = re.sub(r'\$\$([^$]+)\$\$', r'```\n\1\n```', text)
+        
+        # 处理 \[...\] 格式的数学公式
+        text = re.sub(r'\\\[([^\]]+)\\\]', r'```\n\1\n```', text)
+        
+        # 处理 \(...\) 格式的数学公式
+        text = re.sub(r'\\\(([^)]+)\\\)', r'`\1`', text)
+        
+        # 处理一些常见的数学符号，让它们在Telegram中显示得更好
+        math_replacements = {
+            r'\\times': '×',
+            r'\\div': '÷',
+            r'\\pm': '±',
+            r'\\mp': '∓',
+            r'\\leq': '≤',
+            r'\\geq': '≥',
+            r'\\neq': '≠',
+            r'\\approx': '≈',
+            r'\\infty': '∞',
+            r'\\sum': '∑',
+            r'\\prod': '∏',
+            r'\\int': '∫',
+            r'\\alpha': 'α',
+            r'\\beta': 'β',
+            r'\\gamma': 'γ',
+            r'\\delta': 'δ',
+            r'\\epsilon': 'ε',
+            r'\\theta': 'θ',
+            r'\\lambda': 'λ',
+            r'\\mu': 'μ',
+            r'\\pi': 'π',
+            r'\\sigma': 'σ',
+            r'\\tau': 'τ',
+            r'\\phi': 'φ',
+            r'\\omega': 'ω',
+            r'\\Delta': 'Δ',
+            r'\\Gamma': 'Γ',
+            r'\\Lambda': 'Λ',
+            r'\\Omega': 'Ω',
+            r'\\Phi': 'Φ',
+            r'\\Pi': 'Π',
+            r'\\Sigma': 'Σ',
+            r'\\Theta': 'Θ',
+            r'\\rightarrow': '→',
+            r'\\leftarrow': '←',
+            r'\\leftrightarrow': '↔',
+            r'\\Rightarrow': '⇒',
+            r'\\Leftarrow': '⇐',
+            r'\\Leftrightarrow': '⇔',
+            r'\\subset': '⊂',
+            r'\\supset': '⊃',
+            r'\\subseteq': '⊆',
+            r'\\supseteq': '⊇',
+            r'\\in': '∈',
+            r'\\notin': '∉',
+            r'\\cup': '∪',
+            r'\\cap': '∩',
+            r'\\emptyset': '∅',
+            r'\\forall': '∀',
+            r'\\exists': '∃',
+            r'\\nabla': '∇',
+            r'\\partial': '∂',
+            r'\\sqrt': '√',
+            r'\\frac{([^}]+)}{([^}]+)}': r'(\1)/(\2)',
+            r'\\lim_{([^}]+)}': r'lim[\1]',
+            r'\\sum_{([^}]+)}': r'∑[\1]',
+            r'\\int_{([^}]+)}': r'∫[\1]',
+        }
+        
+        for pattern, replacement in math_replacements.items():
+            text = re.sub(pattern, replacement, text)
+        
+        return text
         
     async def call_azure_openai(self, user_config: Dict, messages: list) -> Optional[str]:
         """调用 Azure OpenAI API"""
@@ -120,7 +201,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🔒 隐私保护：每个用户的配置独立存储，API 密钥安全加密
     """
-    await update.message.reply_text(welcome_text)
+    await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
 async def config_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """配置 API 信息"""
@@ -155,7 +236,7 @@ async def config_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 确保你的 Azure 资源中已部署这些模型！
         """
-        await update.message.reply_text(config_text)
+        await update.message.reply_text(config_text, parse_mode='Markdown')
         return
     
     api_key = args[0]
@@ -163,11 +244,11 @@ async def config_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 验证输入格式
     if not endpoint.startswith('https://'):
-        await update.message.reply_text("❌ 端点 URL 必须以 https:// 开头")
+        await update.message.reply_text("❌ 端点 URL 必须以 https:// 开头", parse_mode='Markdown')
         return
     
     if len(api_key) < 20:
-        await update.message.reply_text("❌ API 密钥格式似乎不正确，请检查")
+        await update.message.reply_text("❌ API 密钥格式似乎不正确，请检查", parse_mode='Markdown')
         return
     
     # 初始化用户配置
@@ -200,7 +281,7 @@ async def config_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 使用 /model 选择或切换模型，然后就可以开始对话了！
     """
     
-    await update.message.reply_text(success_msg)
+    await update.message.reply_text(success_msg, parse_mode='Markdown')
 
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """选择模型"""
@@ -210,7 +291,8 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_config.get('api_key'):
         await update.message.reply_text(
             "❌ 请先使用 /config 配置 API 信息\n\n"
-            "格式：/config <API_KEY> <ENDPOINT>"
+            "格式：/config <API_KEY> <ENDPOINT>",
+            parse_mode='Markdown'
         )
         return
     
@@ -234,7 +316,7 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_display = bot_instance.available_models.get(current_model, current_model)
     text = f"🔄 选择要使用的 AI 模型\n\n当前模型: {current_display}\n\n点击下方按钮切换："
     
-    await update.message.reply_text(text, reply_markup=reply_markup)
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
 
 async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """处理模型选择回调"""
@@ -245,7 +327,7 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = query.data.split(':')[1]
     
     if action == 'cancel':
-        await query.edit_message_text("❌ 已取消模型选择")
+        await query.edit_message_text("❌ 已取消模型选择", parse_mode='Markdown')
         return
     
     if action == 'compare':
@@ -287,7 +369,7 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • 日常对话 → GPT-4o / GPT-3.5 Turbo 0125
 • 创新体验 → Grok-3
         """
-        await query.edit_message_text(compare_text)
+        await query.edit_message_text(compare_text, parse_mode='Markdown')
         return
     
     if action == 'refresh':
@@ -310,7 +392,7 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_display = bot_instance.available_models.get(current_model, current_model)
         text = f"🔄 选择要使用的 AI 模型\n\n当前模型: {current_display}\n\n点击下方按钮切换："
         
-        await query.edit_message_text(text, reply_markup=reply_markup)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
         return
     
     # 更新用户选择的模型
@@ -335,7 +417,7 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 提示：不同模型有不同的特点，可以尝试相同问题在不同模型下的回答。
     """
     
-    await query.edit_message_text(success_text)
+    await query.edit_message_text(success_text, parse_mode='Markdown')
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """查看当前配置状态"""
@@ -345,7 +427,8 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_config:
         await update.message.reply_text(
             "❌ 尚未配置 API 信息\n\n"
-            "请使用 /config 命令配置你的 Azure OpenAI API"
+            "请使用 /config 命令配置你的 Azure OpenAI API",
+            parse_mode='Markdown'
         )
         return
     
@@ -379,7 +462,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • /clear - 清除对话历史
     """
     
-    await update.message.reply_text(status_text)
+    await update.message.reply_text(status_text, parse_mode='Markdown')
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """清除对话历史"""
@@ -389,7 +472,8 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "🗑️ 对话历史已清除！\n\n"
-        "现在可以开始全新的对话了。"
+        "现在可以开始全新的对话了。",
+        parse_mode='Markdown'
     )
 
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -409,7 +493,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 示例：
 /config sk-abc123... https://your-resource.openai.azure.com
         """
-        await update.message.reply_text(help_text)
+        await update.message.reply_text(help_text, parse_mode='Markdown')
         return
     
     user_message = update.message.text
@@ -417,7 +501,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     model_display = bot_instance.available_models.get(model, model)
     
     # 发送"正在思考"的消息
-    thinking_msg = await update.message.reply_text(f"🤔 {model_display} 正在思考...")
+    thinking_msg = await update.message.reply_text(f"🤔 {model_display} 正在思考...", parse_mode='Markdown')
     
     # 构建消息历史
     system_prompts = {
@@ -442,19 +526,22 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await thinking_msg.delete()
     
     if response:
+        # 预处理数学公式
+        processed_response = bot_instance.preprocess_math_formulas(response)
+        
         # 如果回复太长，分段发送
         max_length = 4000
-        if len(response) > max_length:
-            parts = [response[i:i+max_length] for i in range(0, len(response), max_length)]
+        if len(processed_response) > max_length:
+            parts = [processed_response[i:i+max_length] for i in range(0, len(processed_response), max_length)]
             for i, part in enumerate(parts):
                 if i == 0:
-                    await update.message.reply_text(f"💬 {model_display} 回复：\n\n{part}")
+                    await update.message.reply_text(f"💬 {model_display} 回复：\n\n{part}", parse_mode='Markdown')
                 else:
-                    await update.message.reply_text(part)
+                    await update.message.reply_text(part, parse_mode='Markdown')
         else:
-            await update.message.reply_text(f"💬 {model_display} 回复：\n\n{response}")
+            await update.message.reply_text(f"💬 {model_display} 回复：\n\n{processed_response}", parse_mode='Markdown')
     else:
-        await update.message.reply_text("❌ 抱歉，处理您的请求时出现了问题，请稍后再试。")
+        await update.message.reply_text("❌ 抱歉，处理您的请求时出现了问题，请稍后再试。", parse_mode='Markdown')
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """帮助命令"""
@@ -500,7 +587,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 需要帮助？发送任何消息给我！
     """
-    await update.message.reply_text(help_text)
+    await update.message.reply_text(help_text, parse_mode='Markdown')
 
 def main():
     """启动机器人"""
